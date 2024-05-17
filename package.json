@@ -1,6 +1,6 @@
 {
     "name": "kaltura-file-manager",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A Kaltura file manager app",
     "main": "main.js",
     "scripts": {

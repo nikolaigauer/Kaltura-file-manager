@@ -1,0 +1,12 @@
+# Ignore Node modules
+node_modules/
+
+# Ignore Electron's output directory
+out/
+
+# Ignore log files
+*.log
+
+# Ignore any files generated during development or build process
+.DS_Store
+.vscode/

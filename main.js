@@ -3,6 +3,8 @@ const { app, BrowserWindow } = require('electron')
 // include the Node.js 'path' module at the top of your file
 const path = require('path')
 
+require('update-electron-app')()
+
 // modify your existing createWindow() function
 const createWindow = () => {
         const win = new BrowserWindow({

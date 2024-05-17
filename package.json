@@ -1,0 +1,22 @@
+{
+    "name": "kaltura-file-manager",
+    "version": "1.0.0",
+    "description": "A Kaltura file manager app",
+    "main": "main.js",
+    "scripts": {
+        "start": "electron ."
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nikolaigauer/Kaltura-file-manager.git"
+    },
+    "author": "Nikolai Gauer",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/nikolaigauer/Kaltura-file-manager/issues"
+    },
+    "homepage": "https://github.com/nikolaigauer/Kaltura-file-manager#readme",
+    "devDependencies": {
+        "electron": "^30.0.6"
+    }
+}

@@ -1,4 +1,4 @@
-require('update-electron-app')()
+require('update-electron-app')
 const { app, BrowserWindow } = require('electron')
 
 // include the Node.js 'path' module at the top of your file

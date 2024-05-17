@@ -1,0 +1,611 @@
+<style>
+    body {
+        font-family: Arial, Helvetica, sans-serif;
+    }
+    
+    fieldset {
+        background-color: #fdfcf9;
+        margin-bottom: 1%;
+        padding: 1%;
+    }
+    
+    legend {
+        background-color: #ffd261;
+        color: #3c0d61;
+        padding: 5px 10px;
+        font-weight: bold;
+        border-radius: 15px;
+    }
+    
+    .search {
+        width: 100%;
+    }
+    
+    .session,
+    .pager {
+        width: 400px;
+    }
+    
+    li {
+        padding: 5px;
+    }
+    
+    #ks {
+        width: 200px;
+    }
+    /* Add CSS to set the initial width of columns and enable resizing */
+    
+    table {
+        border: 1px solid #3c0d61;
+        table-layout: fixed;
+        width: 200px;
+        margin: 5px;
+        border-radius: 4px;
+    }
+    
+    #name {
+        resize: horizontal;
+        /* Allow horizontal resizing */
+        overflow: hidden;
+        /* Show scrollbars if content overflows */
+        width: 300px !important;
+    }
+    
+    th {
+        width: 150px;
+        overflow: hidden;
+        resize: horizontal;
+        border-radius: 4px;
+        background-color: rgb(248, 211, 90);
+    }
+    
+    td {
+        padding: 2px 15px;
+        border-bottom: solid 1px #3c0d61;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    
+    .clickable {
+        cursor: pointer;
+        color: blue;
+        text-decoration: underline;
+    }
+    
+    .container {
+        display: flex;
+        justify-content: space-between;
+    }
+    
+    #results-container {
+        width: 20%;
+        border-radius: 15px;
+    }
+    
+    #media-container {
+        width: 70%;
+        /* Adjust the width as needed */
+        border-radius: 15px;
+    }
+    
+    #delete-all-media {
+        background-color: #ff4d4d;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-bottom: 10px;
+    }
+    
+    #delete-user {
+        background-color: #808080;
+        color: white;
+        padding: 10px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    
+    #delete-user[disabled] {
+        background-color: #d3d3d3;
+        cursor: not-allowed;
+    }
+</style>
+<script src="jquery-3.1.0.min.js"></script>
+<script src="KalturaFullClient.min.js"></script>
+
+<body>
+    <script>
+        var client;
+        var userIdArray;
+        var currentBatchIndex = 0;
+        var batchSize = 100;
+
+        var session_start_cb = function(success, ks) {
+            if (!success)
+                alert(ks.message);
+
+            client.setKs(ks);
+            document.getElementById("ks").value = ks;
+            alert("Session started: " + ks);
+        };
+
+        function startSession() {
+            var config = new KalturaConfiguration(document.getElementById("partnerId").value);
+            config.serviceUrl = "https://api.ca.kaltura.com";
+
+            client = new KalturaClient(config);
+
+            var secret = document.getElementById("secret").value;
+            var userId = document.getElementById("userId").value;
+            var type = 2; // KalturaSessionType.USER
+            var partnerId = document.getElementById("partnerId").value;
+            var expiry = null;
+            var privileges = null;
+
+            // Start the session
+            KalturaSessionService.start(secret, userId, type, partnerId, expiry, privileges)
+                .completion(session_start_cb)
+                .execute(client);
+
+            // List Kaltura users and store their IDs in userIdArray
+            listKalturaUsers(function(userIds) {
+                userIdArray = userIds;
+            });
+        }
+
+        function listKalturaUsers(callback) {
+            var filter = {
+                objectType: "KalturaUserFilter"
+            };
+            var pager = {
+                objectType: "KalturaFilterPager"
+            };
+
+            KalturaUserService.listAction(filter, pager)
+                .execute(client, function(success, results) {
+                    if (!success || (results && results.code && results.message)) {
+                        console.log('Kaltura Error', success, results);
+                    } else {
+                        console.log('Kaltura Users', results);
+                        var userIds = results.objects.map(function(user) {
+                            return user.id;
+                        });
+                        callback(userIds);
+                    }
+                });
+        }
+
+        function displayMatchingUsersInBrowser(matchingUserIds) {
+            // Get the existing table or create a new one if it doesn't exist
+            var resultsContainer = document.getElementById('results-container');
+            var resultsTable = resultsContainer.querySelector('table');
+            if (!resultsTable) {
+                resultsTable = document.createElement('table');
+                resultsTable.innerHTML = '<tr><th>User ID</th><th>Entry Count</th></tr>';
+                resultsContainer.appendChild(resultsTable);
+            }
+
+            // Clear existing rows
+            resultsTable.innerHTML = '<tr><th>User ID</th><th>Entry Count</th></tr>';
+
+            // Add matching user IDs to subsequent rows
+            var processedCount = 0; // Counter to track processed user IDs
+
+            matchingUserIds.forEach(function(userId) {
+                // Call a function to get and display the count of entries for each user
+                getEntryCountForUser(userId, function(count) {
+                    if (count > 0) { // Check if the user has any media entries
+                        var userRow = document.createElement('tr');
+                        userRow.id = userId; // Set the row ID to the user ID for later reference
+                        userRow.innerHTML = '<td class="clickable">' + userId + '</td><td class="entry-count">' + count + '</td>';
+                        resultsTable.appendChild(userRow);
+                    }
+                    processedCount++;
+                    // If all user IDs have been processed, make them clickable
+                    if (processedCount === matchingUserIds.length) {
+                        makeUserIdsClickable();
+                    }
+                });
+            });
+        }
+
+
+        function makeUserIdsClickable() {
+            // Add click event listeners to make user IDs clickable
+            var clickableUserIds = document.querySelectorAll('.clickable');
+
+            clickableUserIds.forEach(function(userElement) {
+                userElement.addEventListener('click', function() {
+                    var userId = userElement.textContent;
+                    displayUserMedia(userId);
+                    window.scrollTo(0, 0); // Scrolls to the top of the page
+                });
+            });
+        }
+
+        function searchUser() {
+            var userIdToSearch = document.getElementById("userIdToSearch").value;
+
+            if (!userIdToSearch) {
+                alert("Please enter a userId to search.");
+                return;
+            }
+
+            // Split the space-separated userIds into an array
+            var userIdArray = userIdToSearch.split(/\s+/);
+
+            // Initialize an array to collect matching user IDs
+            var matchingUserIds = [];
+
+            // Counter to keep track of how many user IDs have been processed
+            var processedCount = 0;
+
+            // Check for each user ID if it exists in the Kaltura user database
+            userIdArray.forEach(function(userId) {
+                searchKalturaUser(userId, function(found) {
+                    processedCount++;
+
+                    if (found) {
+                        matchingUserIds.push(userId);
+                    }
+
+                    // If all user IDs have been processed, display the matching users
+                    if (processedCount === userIdArray.length) {
+                        displayMatchingUsersInBrowser(matchingUserIds);
+                    }
+                });
+            });
+        }
+
+        function performUserSearch() {
+            // Get the next batch of user IDs
+            var batch = userIdArray.slice(currentBatchIndex, currentBatchIndex + batchSize);
+
+            // If there are user IDs in the batch, perform the search
+            if (batch.length > 0) {
+                var matchingUserIds = [];
+
+                // Counter to keep track of how many user IDs have been processed
+                var processedCount = 0;
+
+                // Check for each user ID if it exists in the Kaltura user database
+                batch.forEach(function(userId) {
+                    searchKalturaUser(userId, function(found) {
+                        processedCount++;
+
+                        if (found) {
+                            matchingUserIds.push(userId);
+                        }
+
+                        // If all user IDs have been processed, display the matching users
+                        if (processedCount === batch.length) {
+                            displayMatchingUsersInBrowser(matchingUserIds);
+
+                            // Update batch index for the next search
+                            currentBatchIndex += batchSize;
+                        }
+                    });
+                });
+            } else {
+                // If there are no more user IDs, display a message
+                alert("No more user IDs to search.");
+            }
+        }
+
+        function getEntryCountForUser(userId, callback) {
+            // Filter for media entries owned by the user
+            var filter = {
+                objectType: "KalturaMediaEntryFilter",
+                userIdEqual: userId
+            };
+
+            // Count the number of entries
+            KalturaMediaService.count(filter)
+                .execute(client, function(success, results) {
+                    if (!success || (results && results.code && results.message)) {
+                        console.error('Error fetching entry count for ' + userId, success, results);
+                        alert('Error fetching entry count for ' + userId);
+                        callback('N/A'); // Indicate that the count couldn't be retrieved
+                    } else {
+                        // Display the count of entries
+                        callback(results);
+                    }
+                });
+        }
+
+        function displayEntryCountForUser(userId, count) {
+            // Find the row corresponding to the user and add the count
+            var userRow = document.getElementById(userId);
+            if (userRow) {
+                var entryCountCell = userRow.querySelector('.entry-count');
+                entryCountCell.textContent = count; // Update the content of the entry count cell
+            }
+        }
+
+        function displayUserMedia(userId) {
+            // Clear existing media rows
+            var mediaContainer = document.getElementById('media-container');
+            if (mediaContainer) {
+                mediaContainer.innerHTML = '';
+            }
+
+            // Display the media entries for the selected user
+            getMediaForUser(userId, function(mediaEntries) {
+                var mediaTable = document.createElement('table');
+                mediaTable.innerHTML = '<tr><th>Total number of entries</th><th>User ID</th><th>Media Name</th><th>Created At</th><th>Last Played At</th><th>Original File Size</th><th>Action</th></tr>';
+
+                // Add the user information to the first row
+                var userRow = mediaTable.insertRow();
+                var entryCountCell = userRow.insertCell();
+                entryCountCell.textContent = mediaEntries.length;
+                var userIdCell = userRow.insertCell();
+                userIdCell.textContent = userId;
+
+                // Add empty cells to cover the remaining columns
+                userRow.insertCell(); // for Media Name
+                userRow.insertCell(); // for Created At
+                userRow.insertCell(); // for Last Played At
+                userRow.insertCell(); // for Original File Size
+                userRow.insertCell(); // for Action (delete button)
+
+                mediaContainer.appendChild(mediaTable);
+
+                mediaEntries.forEach(function(media) {
+                    var mediaRow = mediaTable.insertRow();
+                    var entryId = media.id;
+                    mediaRow.innerHTML =
+                        '<td></td><td></td><td>' + // Placeholder for entry count and user ID
+                        media.name +
+                        '</td><td>' +
+                        new Date(media.createdAt * 1000).toLocaleString() +
+                        '</td><td>' +
+                        new Date(media.lastPlayedAt * 1000).toLocaleString() +
+                        //   '</td><td>' + // This is where the file size will go
+                        '</td>'; // Prepare cell for file size
+
+                    var fileSizeCell = mediaRow.insertCell();
+                    fileSizeCell.textContent = 'Loading...';
+
+                    var deleteCell = mediaRow.insertCell();
+                    deleteCell.innerHTML = '<button onclick="deleteMedia(\'' + userId + '\', \'' + entryId + '\')">Delete</button>';
+
+                    // Fetch flavor asset size
+                    var flavorAssetFilter = {
+                        entryIdEqual: media.id,
+                        flavorParamsIdEqual: 0,
+                        orderBy: "+createdAt"
+                    };
+                    var flavorAssetPager = {};
+
+                    KalturaFlavorAssetService.listAction(flavorAssetFilter, flavorAssetPager).execute(client, function(success, results) {
+                        if (!success || (results && results.code && results.message)) {
+                            console.log('Kaltura Error', success, results);
+                            fileSizeCell.textContent = 'Error';
+                        } else {
+                            var flavorAsset = results.objects[0];
+                            if (flavorAsset && flavorAsset.sizeInBytes) {
+                                var fileSize = flavorAsset.sizeInBytes / (1024 ** 2); // Convert bytes to MB
+                                fileSizeCell.textContent = fileSize.toFixed(2) + ' MB';
+                            } else {
+                                fileSizeCell.textContent = 'Not available';
+                            }
+                        }
+                    });
+                });
+
+            });
+
+            // Add the "Delete All Media" button
+            var deleteAllMediaButton = document.createElement('button');
+            deleteAllMediaButton.id = 'delete-all-media';
+            deleteAllMediaButton.textContent = 'Delete All Media';
+            deleteAllMediaButton.addEventListener('click', function() {
+                deleteAllMedia(userId);
+            });
+            mediaContainer.appendChild(deleteAllMediaButton);
+
+            // Add the "Delete Kaltura User" button
+            var deleteUserButton = document.createElement('button');
+            deleteUserButton.id = 'delete-user';
+            deleteUserButton.textContent = 'Delete Kaltura User';
+            deleteUserButton.addEventListener('click', function() {
+                deleteKalturaUser(userId);
+            });
+            // Check if the user has media, and enable/disable the button accordingly
+            getMediaForUser(userId, function(mediaEntries) {
+                deleteUserButton.disabled = mediaEntries.length > 0;
+            });
+
+            mediaContainer.appendChild(deleteUserButton);
+        }
+
+
+
+
+        function deleteMedia(userId, entryId) {
+            console.log('deleteMedia function called with userId:', userId, 'and entryId:', entryId); // Debugging
+            if (typeof entryId === 'undefined') {
+                console.error("Entry ID is undefined. Cannot proceed with deletion.");
+                return;
+            }
+
+            if (confirm('Are you sure you want to delete this media entry: ' + entryId + '?')) {
+                KalturaMediaService.deleteAction(entryId).execute(client, function(success, results) {
+                    console.log("deleteMedia response:", success, results); // Debugging
+
+                    if (!success || (results && results.code && results.message)) {
+                        console.error('Error deleting media entry:', results);
+                        alert('Error deleting media entry.');
+                    } else {
+                        console.log("Media deleted successfully.");
+                        alert('Media entry deleted successfully.');
+                        displayUserMedia(userId); // Refresh media display
+                    }
+                });
+            }
+        }
+
+
+
+        // Function to delete all media entries for a given user
+        function deleteAllMedia(userId) {
+            // First, get all the media entries for the user
+            getMediaForUser(userId, function(mediaEntries) {
+                // If there are no media entries, inform the user
+                if (mediaEntries.length === 0) {
+                    alert("No media entries found for this user.");
+                    return;
+                }
+
+                // Construct a list of media names for confirmation
+                var mediaNames = mediaEntries.map(function(media) {
+                    return media.name;
+                });
+
+                // Create the confirmation message with the list of media names
+                var confirmationMessage =
+                    "Are you sure you want to delete the following media entries?\n\n" +
+                    mediaNames.join("\n");
+
+                // Prompt the user for confirmation
+                if (confirm(confirmationMessage)) {
+                    // If confirmed, delete each media entry
+                    mediaEntries.forEach(function(media) {
+                        KalturaMediaService.deleteAction(media.id).execute(client, function(success, results) {
+                            if (!success || (results && results.code && results.message)) {
+                                console.error("Error deleting media entry:", results);
+                            } else {
+                                console.log("Media entry deleted:", media.name);
+                            }
+                        });
+                    });
+
+                    // Once all entries are deleted, refresh the display
+                    displayUserMedia(userId);
+                }
+            });
+        }
+
+        // function deleteAllMedia(userId) {
+        //     // Implement the logic to delete all media owned by the user
+        //     // This will involve fetching the media entries and then deleting each one
+        //     // You can use the existing `getMediaForUser` and `deleteMedia` functions for this purpose
+        //     // alert('Delete Kaltura User function to be implemented');
+
+        //     getMediaForUser(userId, function(mediaEntries) {
+        //         mediaEntries.forEach(function(media) {
+        //             deleteMedia(userId, media.id);
+        //         });
+        //     });
+        // }
+
+        // function deleteKalturaUser(userId) {
+        //     // Implement the logic to delete the Kaltura user
+        //     // You can use the KalturaUserService.deleteAction method for this purpose
+        //     // Make sure to check if the user has any media before allowing deletion
+        //     alert('Delete Kaltura User function to be implemented');
+        // }
+
+
+        function getMediaForUser(userId, callback) {
+            // Filter for media entries owned by the user
+            var filter = {
+                objectType: "KalturaMediaEntryFilter",
+                userIdEqual: userId
+            };
+            var pager = {
+                objectType: "KalturaFilterPager"
+            };
+            pager.pageSize = 500;
+            pager.pageIndex = 1;
+
+            // Get the media entries
+            KalturaMediaService.listAction(filter, pager)
+                .execute(client, function(success, results) {
+                    if (!success || (results && results.code && results.message)) {
+                        console.error('Error fetching media entries for ' + userId, success, results);
+                        alert('Error fetching media entries for ' + userId);
+                        callback([]);
+                    } else {
+                        // Display the media entries
+                        callback(results.objects || []);
+                    }
+                });
+        }
+
+        function searchKalturaUser(userId, callback) {
+            console.log('Searching for userId: "' + userId + '"');
+
+            var filter = {
+                objectType: "KalturaUserFilter",
+                idEqual: userId
+            };
+
+            var pager = {
+                objectType: "KalturaFilterPager"
+            };
+
+            KalturaUserService.listAction(filter, pager)
+                .execute(client, function(success, results) {
+                    if (!success || (results && results.code && results.message)) {
+                        console.error('Error fetching user details for ' + userId, success, results);
+                        alert('Error fetching user details for ' + userId);
+                        callback(false);
+                    } else {
+                        // Check if any user was found
+                        if (results.totalCount > 0) {
+                            callback(true);
+                        } else {
+                            console.log('User not found:', userId);
+                            callback(false);
+                        }
+                    }
+                });
+        }
+    </script>
+    <fieldset>
+        <legend>Start Kaltura Session</legend>
+        <table class="session">
+            <tr>
+                <td>Secret:</td>
+                <td><input type="text" id="secret" /></td>
+            </tr>
+            <tr>
+                <td>Partner ID:</td>
+                <td><input type="text" id="partnerId" /></td>
+            </tr>
+            <tr>
+                <td>User ID:</td>
+                <td><input type="text" id="userId" /></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td><input type="button" onclick="startSession();" value="Start Session" /></td>
+            </tr>
+            <tr>
+                <td align="center" colspan="2">Kaltura Session Key: <input type="text" id="ks" size="120" /></td>
+            </tr>
+        </table>
+    </fieldset>
+
+    <fieldset>
+        <legend>Search Kaltura User</legend>
+        <label for="userIdToSearch">Enter userIds separated by a space:</label>
+        <input type="text" id="userIdToSearch" />
+        <button onclick="searchUser()">Search User</button>
+
+    </fieldset>
+
+
+    <fieldset>
+        <legend>User Media</legend>
+        <div class="container">
+            <div id="results-container"></div>
+            <div id="media-container"></div>
+        </div>
+
+    </fieldset>
+
+</body>

@@ -1,3 +1,6 @@
+// Import the update-electron-app module
+require('update-electron-app');
+
 const { app, BrowserWindow } = require('electron')
 
 // include the Node.js 'path' module at the top of your file
